@@ -183,11 +183,57 @@ int tfsOpen(char *oldfilename, permission mode)
     return TECNICOFS_ERROR_OPEN_SESSION;
 }
 
+int tfsClose(int fd)
+{
+    if(opened_session == 1)
+    {
+        char buffer[30],erro[4];
+        int n_bytes = 0;
+
+        sprintf(buffer,"x %d",fd);
+        write(sockfd,buffer,strlen(buffer));
+
+        while(n_bytes == 0)
+            n_bytes = read(sockfd,erro,4);
+        if(n_bytes == -1)
+            return TECNICOFS_ERROR_OTHER;
+        return error(erro);
+    }
+    return TECNICOFS_ERROR_OPEN_SESSION;
+}
+
+int tfsRead(int fd, char *buffer_input, int len)
+{
+    if(opened_session == 1)
+    {
+        char buffer[len],output[len + sizeof(int)];/*, bytes_lidos[4];*/
+        int n_bytes = 0;
+
+        sprintf(buffer,"l %d %d",fd,len);
+        printf("buffer: %s \n",buffer);
+        write(sockfd,buffer,strlen(buffer));
+
+        while(n_bytes == 0)
+            n_bytes = read(sockfd,output,len + sizeof(int));
+        if(n_bytes == -1)
+            return TECNICOFS_ERROR_OTHER;
+
+        bzero(buffer,30);
+        sscanf(output,"%d %s",&n_bytes, buffer);
+        printf("output: %s\n", output);
+
+        return n_bytes;
+    }
+    return TECNICOFS_ERROR_OPEN_SESSION;
+}
+
 int main(int argc, char** argv) {
      if (argc != 2) {
         printf("Usage: %s sock_path\n", argv[0]);
         exit(0);
     }
+    int putas;
+    char buffer[30];
     tfsMount(argv[1]);
     /*tfsMount(argv[1]);*/
     printf("Test: create file sucess\n");
@@ -196,7 +242,10 @@ int main(int argc, char** argv) {
     assert(tfsCreate("a", RW, READ) == TECNICOFS_ERROR_FILE_ALREADY_EXISTS);
     /*assert(tfsRename("a", "b") == 0);
     assert(tfsDelete("a") == 0);*/
-    assert(tfsOpen("a",READ) != 0);
+    assert((putas = tfsOpen("a",READ)) > 0);
+    assert(tfsRead(putas,buffer,16) > 0);
+    assert(tfsClose(putas) == 0);
+
     tfsUnmount();
     /*Unmount();*/
 

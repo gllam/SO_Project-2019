@@ -37,7 +37,7 @@ int checkPermissions(int permissions, uid_t owner,uid_t uid,permission getOwnerP
             return permissions;/* True*/
         else if((permissions == (long)getOwnerPermissions) && (permissions != 0))
             return permissions;
-        return 1;
+        return 0;
             
     }
     else
@@ -48,7 +48,7 @@ int checkPermissions(int permissions, uid_t owner,uid_t uid,permission getOwnerP
             return permissions;/* True*/
         else if((permissions == (long)getOtherPermissions) && (permissions != 0))
             return permissions;
-        return 1;
+        return 0;
     }
 }
 
@@ -79,7 +79,7 @@ void *applyCommands(void *socket){
     permission getOtherPermissions;
     char* arrayOpenFiles[5];
     int permission,i,access_granted = 0;
-    int fd;
+    int fd,fd_given,fd_file, caracteres_lidos,lenfd,acabou=0;
 
     for(i=0;i<5;i++)
     {
@@ -103,7 +103,6 @@ void *applyCommands(void *socket){
             n_bytes = read(newsockfd,buffer, 30);
         if(n_bytes == -1)
             return NULL;
-        printf("n_bytes: %d\n",n_bytes );
 
         sscanf(buffer,"%c %s %s", &token, arg1, arg2);
         printf("%s\n", buffer);
@@ -195,8 +194,8 @@ void *applyCommands(void *socket){
                 break;
         
             case 'o':
+                acabou = 0;
                 permission = atoi(arg2);
-                printf("%d\n", permission );
                 if(strcmp(arrayOpenFiles[4],"")!= 0)
                 {
                     write(newsockfd,"-7",3);
@@ -213,36 +212,96 @@ void *applyCommands(void *socket){
                 
                 access_granted = checkPermissions(permission,owner,ucred.uid,getOwnerPermissions,getOtherPermissions);                  
                 
-                if (access_granted != 1)/* True*/
-                {
-                    for(i=0;i<5;i++)
+                if (access_granted != 0)/* True*/
                     {
-                        if(strcmp(arrayOpenFiles[i],"")== 0){
-                            sprintf(arrayOpenFiles[i],"%d %s",permission,arg1);
-                            break; /*end the for loop*/
-                        }
-                    }
                     switch(access_granted){
                         case(1):
-                            fd = open(arg1, O_WRONLY | O_CREAT);
+                            fd = open(arg1, O_WRONLY | O_CREAT );
                             break;
                         case(2):
                             fd = open(arg1, O_RDONLY | O_CREAT);
                             break;
                         case(3):
-                            fd = open(arg1, O_RDWR | O_CREAT);
+                            fd = open(arg1, O_RDWR | O_CREAT );
                             break;
                         default:{
                             write(newsockfd,"-11",4);
+                            acabou = 1;
+                            break;
                             }
                         }
-                    sprintf(fd_buffer,"%d",fd);
-                    write(newsockfd,fd_buffer,2);/*Tamanho de inteiros positivos*/
-                    break;
-                }
-                write(newsockfd,"-6",3);
+                        if (acabou == 1)
+                            break;
+                        printf("fd: %d\n",fd);
+                        for(i=0;i<5;i++)
+                        {      
+                            if(strcmp(arrayOpenFiles[i],"")== 0){
+                             sprintf(arrayOpenFiles[i],"%d %d %s",fd,permission,arg1);
+                                break; /*end the for loop*/
+                            }
+                        }
+                        sprintf(fd_buffer,"%d",fd);
+                        write(newsockfd,fd_buffer,2);/*Tamanho de inteiros positivos*/
+                        break;
+                    }
+                write(newsockfd,"-6",3);/*ERRO DONT HAVE PERMISSION*/
                 break;
 
+            case 'x':
+                acabou = 0;
+                fd_given = atoi(arg1);
+                for(i=0;i<5;i++)
+                {
+                    sscanf(arrayOpenFiles[i],"%d",&fd_file);
+                    if(fd_file == fd_given)
+                    {
+                        close(fd_file);
+                        strcpy(arrayOpenFiles[i],"");
+                        printf("cona\n");
+                        write(newsockfd,"0",2);
+                        acabou = 1;
+                        break;
+                    }
+                }
+                if(acabou == 1)
+                    break;
+                printf("i: %d\n",i );
+                write(newsockfd,"-8",3);
+                break;
+
+            case 'l':
+                acabou = 0;
+                bzero(buffer,MAX_SIZE_BUFFER);
+                lenfd = atoi(arg2) - 1;
+                printf("lenfd: %d",lenfd);
+                fd_given = atoi(arg1);
+                for(i=0;i<5;i++)
+                {
+                    sscanf(arrayOpenFiles[i],"%d %d",&fd_file,&permission);
+                    printf("permission: %d\n",permission);
+                    if(fd_file == fd_given)
+                    {
+                        if(permission >= 2)
+                        {
+                            printf("%d\n", fd_file);
+                            caracteres_lidos = read(fd_file,buffer,lenfd);
+                            printf("%s\n", buffer);
+                            printf("caracterres lidos: %d\n", caracteres_lidos);
+                            sprintf(fd_buffer,"%d ", caracteres_lidos);/* reutilizacao de memoria*/
+
+                            strcat(fd_buffer,buffer);
+                            printf("fd_buffer: %s\n", fd_buffer );
+                            lenfd += sizeof(int);
+                            write(newsockfd,fd_buffer,lenfd);
+                            acabou = 1;
+                            break;
+                        }
+                    }
+                }
+                if(acabou == 1)
+                    break;
+                write(newsockfd,"-8",3);
+                break;
             default:{
 
                 exit(EXIT_FAILURE);
